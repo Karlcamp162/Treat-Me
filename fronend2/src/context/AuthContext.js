@@ -1,58 +1,59 @@
-import { createContext, useState, useEffect, useCallback } from "react";
+import { createContext, useState, useEffect } from "react";
 import { auto_login, login, signup } from "../api/endpoints"; // ✅ Correct imports
 
 // Create AuthContext
 const AuthContext = createContext(null);
 
-// Error Handling Function
-const handleError = (error) => {
-  if (error.response) {
-    return error.response.data.error || "An error occurred";
-  } else {
-    return "Something went wrong. Please try again.";
-  }
-};
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem("token") || "");
 
-  // Auto-login when page refreshes
+  // Auto-login on page load using token from localStorage
   useEffect(() => {
     if (!token) return; // Skip if no token
-
     console.log("Auto-Login Token:", token); // 🔍 Check token before request
-    
+
     auto_login(token)
       .then((data) => {
         if (data.id) {
           setUser(data); // Store the user object properly
         } else {
-          logout(); // Automatically log out if the token is invalid
+          logout();
         }
       })
-      .catch(() => logout()); // Catch any errors and log out
+      .catch(() => logout());
   }, [token]);
 
-  // Login function
-  const handleLogin = useCallback(async (email, password) => {
+  const handleLogin = async (email, password) => {
     try {
       const data = await login(email, password);
+      console.log("Login Response:", data); // Debugging
+
       if (data.token) {
         localStorage.setItem("token", data.token);
         setToken(data.token);
         setUser(data.user);
         return data; // Return success
+      } else {
+        throw new Error("Incorrect email or password.");
       }
-      throw new Error("Incorrect email or password.");
     } catch (error) {
       console.error("Login Error:", error);
-      throw new Error(handleError(error));
-    }
-  }, []);
 
-  // Signup function
-  const handleSignup = useCallback(async (name, email, password) => {
+      // Handle specific error response
+      if (error.response) {
+        if (error.response.status === 401) {
+          throw new Error("Incorrect email or password.");
+        } else {
+          throw new Error(error.response.data.error || "Login failed.");
+        }
+      } else {
+        throw new Error("Something went wrong. Please try again.");
+      }
+    }
+  };
+
+  const handleSignup = async (name, email, password) => {
     try {
       const data = await signup(name, email, password);
       if (data.token) {
@@ -63,16 +64,14 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Signup failed");
       }
     } catch (error) {
-      console.error("Signup Error:", error);
-      throw new Error(handleError(error));
+      throw new Error(error.response?.data?.error || "Signup failed");
     }
-  }, []);
+  };
 
-  // Logout function
   const logout = () => {
-    localStorage.removeItem("token"); // Remove the token from local storage
-    setUser(null);  // Reset user data in state
-    setToken("");   // Clear token in state
+    localStorage.removeItem("token");
+    setUser(null);
+    setToken("");
   };
 
   return (
